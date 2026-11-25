@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Retro OS v0.16.1</title>
+    
+    <!-- PWA podpora -->
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#008080">
+    <link rel="apple-touch-icon" href="./icon-192x192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <style>
+        :root {
+            --desktop-bg: #008080; --window-bg: #e0e0e0; --border-color: #000;
+            --text-color: #000; --highlight-bg: #000; --highlight-text: #fff;
+            --font-family: 'Courier New', Courier, monospace;
+        }
+
+        body {
+            margin: 0; padding: 0; background-color: var(--desktop-bg);
+            background-image: radial-gradient(circle, #000 1px, transparent 1px); background-size: 8px 8px;
+            font-family: var(--font-family); color: var(--text-color); overflow: hidden;
+            width: 100vw; height: 100vh; position: relative; touch-action: none;
+        }
+        #desktop { width: 100%; height: 100%; position: relative; transition: opacity 0.2s; }
+
+        .window {
+            position: absolute; background-color: var(--window-bg); border: 2px solid var(--border-color);
+            box-shadow: 2px 2px 0 rgba(0,0,0,1); display: flex; flex-direction: column;
+            min-width: 180px; max-width: 95vw; max-height: 95vh; user-select: none;
+        }
+        .window.maximized { top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; max-width: none !important; max-height: none !important; z-index: 9999 !important; }
+        .window.minimized { display: none !important; }
+        .window-header {
+            background-color: var(--highlight-bg); color: var(--highlight-text); padding: 2px 6px;
+            font-size: 14px; font-weight: bold; cursor: move; display: flex; justify-content: space-between;
+            align-items: center; border-bottom: 2px solid var(--border-color); text-transform: uppercase;
+            touch-action: none;
+        }
+        .window-header .title { letter-spacing: 1px; flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .window-controls { display: flex; gap: 4px; }
+        .window-btn {
+            background: none; border: 1px solid var(--border-color); color: var(--highlight-text);
+            background-color: var(--highlight-bg); cursor: pointer; font-family: var(--font-family);
+            font-size: 12px; line-height: 1; padding: 2px 4px; width: 20px; height: 20px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .window-btn:hover { background-color: #fff; color: #000; }
+        .window-btn:active { transform: translate(1px, 1px); }
+        .window-content { padding: 10px; font-size: 12px; flex-grow: 1; overflow: auto; background-color: var(--window-bg); position: relative; touch-action: auto; }
+
+        .logo-box { display: inline-block; background-color: #000; color: #fff; padding: 4px; font-size: 20px; font-weight: bold; margin-bottom: 5px; border: 1px solid #000; }
+        
+        #top-left-label { position: absolute; top: 10px; left: 10px; background-color: #000; color: #fff; padding: 4px 8px; font-size: 14px; font-weight: bold; border: 2px solid #000; cursor: pointer; z-index: 1000; user-select: none; }
+        #top-left-label:hover { background-color: #333; }
+        
+        #app-menu { position: absolute; top: 40px; left: 10px; background-color: var(--window-bg); border: 2px solid var(--border-color); box-shadow: 2px 2px 0 rgba(0,0,0,1); display: none; flex-direction: column; z-index: 1000; padding: 5px; width: 220px; box-sizing: border-box; }
+        .menu-item { padding: 5px 10px; cursor: pointer; font-size: 14px; border-bottom: 1px dashed var(--border-color); white-space: nowrap; }
+        .menu-item:hover { background-color: var(--highlight-bg); color: var(--highlight-text); }
+        
+        .has-submenu { position: relative; display: flex; flex-direction: column; }
+        .has-submenu-label { display: flex; justify-content: space-between; width: 100%; pointer-events: none; }
+        .submenu { position: absolute; top: -2px; left: 100%; background-color: var(--window-bg); border: 2px solid var(--border-color); box-shadow: 2px 2px 0 rgba(0,0,0,1); display: none; flex-direction: column; z-index: 1001; width: 220px; box-sizing: border-box; }
+        
+        @media (hover: hover) { .has-submenu:hover > .submenu { display: flex; background-color: var(--window-bg); color: var(--text-color); } }
+        .has-submenu.open > .submenu { display: flex; background-color: var(--window-bg); color: var(--text-color); }
+        
+        @media (max-width: 768px) { 
+            #app-menu { max-height: 80vh; overflow-y: auto; width: 220px; }
+            .submenu { position: static; box-shadow: none; border: none; border-left: 2px dashed var(--border-color); padding-left: 10px; margin-top: 5px; width: 100%; box-sizing: border-box; }
+            #clock-tool { top: 10px; right: 10px; width: auto;} 
+            #footer-window { bottom: 10px; left: 10px; width: calc(100vw - 30px);} 
+        }
+        
+        #clock-tool { top: 20px; right: 20px; width: 150px; }
+        #footer-window { bottom: 10px; left: 10px; width: 200px;}
+        
+        .resize-handle { position: absolute; bottom: 0; right: 0; width: 16px; height: 16px; cursor: se-resize; background: linear-gradient(135deg, transparent 50%, var(--border-color) 50%); z-index: 10; touch-action: none; }
+
+        .desktop-icon { position: absolute; width: 64px; display: flex; flex-direction: column; align-items: center; cursor: pointer; gap: 5px; z-index: 1; touch-action: none; }
+        .desktop-icon .icon-graphic { width: 32px; height: 32px; background-color: var(--window-bg); border: 2px solid var(--border-color); box-shadow: 2px 2px 0 #000; display: flex; justify-content: center; align-items: center; font-size: 14px; font-weight: bold; color: #000; }
+        .desktop-icon .icon-label { background-color: #000; color: #fff; font-size: 10px; padding: 2px 4px; text-align: center; word-break: break-all; width: 100%; font-family: var(--font-family); }
+        
+        .retro-btn { background: #000; color: #fff; border: 1px solid var(--border-color); padding: 4px 15px; cursor: pointer; font-family: var(--font-family); font-size: 12px; }
+        .retro-btn:hover { background: #fff; color: #000; }
+        
+        .menu-app-row { display: flex; align-items: center; gap: 8px; }
+        .menu-app-row input[type="checkbox"] { margin: 0; cursor: pointer; flex-shrink: 0; }
+        .menu-app-name { flex-grow: 1; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .menu-app-gear { cursor: pointer; font-size: 14px; padding: 0 4px; flex-shrink: 0; }
+        .menu-app-gear:hover { background: var(--highlight-bg); color: var(--highlight-text); }
+
+        .app-toolbar { display: flex; gap: 5px; padding: 5px; background: var(--highlight-bg); border-bottom: 2px solid var(--border-color); align-items: center; }
+        .app-toolbar-btn { background: var(--window-bg); color: var(--text-color); border: 1px solid var(--border-color); font-size: 10px; cursor: pointer; padding: 2px 5px; font-weight: bold; }
+        .app-toolbar-btn:hover { background: #fff; }
+        .app-toolbar-input { flex-grow: 1; font-size: 10px; padding: 2px; border: 1px solid var(--border-color); outline: none; }
+        
+        .csv-table { border-collapse: collapse; width: 100%; font-size: 10px; background: #fff; }
+        .csv-table th, .csv-table td { border: 1px solid var(--border-color); padding: 0; }
+        .csv-table input { width: 100%; box-sizing: border-box; border: none; font-size: 11px; padding: 4px; outline: none; font-family: inherit;}
+        
+        .tabs-header { display: flex; border-bottom: 2px solid #000; background: #fff; }
+        .tab-btn { flex: 1; background: #e0e0e0; border: none; border-right: 2px solid #000; padding: 4px; font-family: inherit; font-size: 11px; cursor: pointer; font-weight: bold; }
+        .tab-btn.active { background: #000; color: #fff; }
+        .tab-btn:last-child { border-right: none; }
+        .tab-content { display: none; padding: 5px; background: #fff; flex-grow: 1;}
+        .tab-content.active { display: block; }
+        
+        #calc-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+        .calc-btn { background: #c0c0c0; border: 2px outset #fff; padding: 10px; font-size: 16px; font-weight: bold; font-family: inherit; cursor: pointer;}
+        .calc-btn:active { border-style: inset; }
+        
+        #dos-output { background: #000; color: #0f0; padding: 5px; font-family: monospace; font-size: 12px; height: 100%; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word;}
+        .dos-line { display: flex; background: #000; color: #0f0; }
+        .dos-line span { padding-right: 5px; }
+        .dos-line input { background: transparent; color: #0f0; border: none; outline: none; flex-grow: 1; font-family: monospace; font-size: 12px;}
+        
+        /* Iframe zástupce proti zasekávání myši při tažení */
+        .iframe-blocker { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: none; cursor: se-resize; }
+        .window.resizing .iframe-blocker, .window.dragging .iframe-blocker { display: block; }
+    </style>
+</head>
+<body>
+
+    <div id="desktop">
+        <div id="top-left-label">H5.ROOT</div>
+        <div id="app-menu"></div>
+
+        <div class="window" id="clock-tool" style="z-index: 1;" data-sys-name="clock">
+            <div class="window-header"><span class="title">Hodiny</span><div class="window-controls"><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content" style="padding:0; display:flex; flex-direction:column; background:#fff;">
+                <div class="tabs-header">
+                    <button class="tab-btn active" onclick="switchClockTab('time')" style="padding: 2px;">Čas</button>
+                    <button class="tab-btn" onclick="switchClockTab('alarm')" style="padding: 2px;">Budík</button>
+                    <button class="tab-btn" onclick="switchClockTab('sw')" style="padding: 2px;">Stopky</button>
+                </div>
+                <div id="tab-time" class="tab-content active" style="text-align: center; padding: 5px;">
+                    <div id="clock-date" style="font-size:10px; font-weight:bold; margin-bottom:2px;"></div>
+                    <div id="clock-display" style="font-size: 18px; font-weight:bold; background:#fff; color:#000; padding:2px; border:2px inset #555; margin-bottom:4px;">...</div>
+                    <select id="world-tz-select" style="width:100%; font-family:inherit; font-size:10px; margin-bottom:4px; border:1px solid #000; padding:1px; outline:none;">
+                        <optgroup label="Evropa"><option value="Europe/London">Londýn</option><option value="Europe/Paris">Paříž</option><option value="Europe/Berlin">Berlín</option></optgroup>
+                        <optgroup label="Amerika"><option value="America/New_York">New York</option><option value="America/Chicago">Chicago</option><option value="America/Los_Angeles">L.A.</option><option value="America/Santiago" selected>Santiago (CL)</option></optgroup>
+                        <optgroup label="Asie"><option value="Asia/Tokyo">Tokyo</option><option value="Asia/Shanghai">Peking</option><option value="Asia/Seoul">Soul</option></optgroup>
+                    </select>
+                    <div id="clock-world" style="font-size: 12px; font-weight:bold; background:#fff; color:#000; padding:2px; border:2px inset #555;">...</div>
+                </div>
+                <div id="tab-alarm" class="tab-content" style="text-align: center; padding:5px;">
+                    <input type="time" id="alarm-input" style="font-family:inherit; font-size:14px; padding:2px; border:2px inset #555; width:100%; margin-bottom:5px;">
+                    <button id="alarm-toggle" class="retro-btn" style="width:100%; padding:2px;">ZAPNOUT</button>
+                    <div id="alarm-status" style="margin-top:2px; font-size:10px; font-weight:bold; color:red;">Vypnuto</div>
+                </div>
+                <div id="tab-sw" class="tab-content" style="text-align: center; padding:5px;">
+                    <div id="sw-display" style="font-size: 16px; font-weight:bold; background:#fff; color:#000; padding:2px; border:2px inset #555; margin-bottom:5px;">00:00.00</div>
+                    <div style="display:flex; gap:2px;">
+                        <button id="sw-start" class="retro-btn" style="flex:1; padding:2px; font-size:9px;">Start</button>
+                        <button id="sw-stop" class="retro-btn" style="flex:1; padding:2px; font-size:9px;">Stop</button>
+                        <button id="sw-reset" class="retro-btn" style="flex:1; padding:2px; font-size:9px;">Res</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="window minimized" id="calc-window" style="z-index: 8; top: 120px; left: 400px; width: 220px;" data-sys-name="calc">
+            <div class="window-header"><span class="title">Kalkulačka</span><div class="window-controls"><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content" style="background:#e0e0e0;">
+                <input type="text" id="calc-display" readonly style="width:100%; box-sizing:border-box; padding:10px; font-size:20px; text-align:right; border:2px inset #555; margin-bottom:10px; background:#fff; font-family:inherit;">
+                <div id="calc-grid">
+                    <button class="calc-btn" onclick="calcInput('7')">7</button><button class="calc-btn" onclick="calcInput('8')">8</button><button class="calc-btn" onclick="calcInput('9')">9</button><button class="calc-btn" onclick="calcInput('/')">/</button>
+                    <button class="calc-btn" onclick="calcInput('4')">4</button><button class="calc-btn" onclick="calcInput('5')">5</button><button class="calc-btn" onclick="calcInput('6')">6</button><button class="calc-btn" onclick="calcInput('*')">*</button>
+                    <button class="calc-btn" onclick="calcInput('1')">1</button><button class="calc-btn" onclick="calcInput('2')">2</button><button class="calc-btn" onclick="calcInput('3')">3</button><button class="calc-btn" onclick="calcInput('-')">-</button>
+                    <button class="calc-btn" onclick="calcInput('C')">C</button><button class="calc-btn" onclick="calcInput('0')">0</button><button class="calc-btn" onclick="calcInput('=')">=</button><button class="calc-btn" onclick="calcInput('+')">+</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="window minimized" id="todo-window" style="z-index: 8; top: 150px; left: 150px; width: 300px; height: 350px;" data-sys-name="todo">
+            <div class="window-header"><span class="title">Úkolníček</span><div class="window-controls"><button class="window-btn max-btn">[+]</button><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content" style="display:flex; flex-direction:column; padding:0; background:#fff;">
+                <div class="app-toolbar">
+                    <input type="text" id="todo-input" class="app-toolbar-input" placeholder="Nový úkol...">
+                    <button id="todo-add-btn" class="app-toolbar-btn">Přidat</button>
+                </div>
+                <div id="todo-list" style="flex-grow: 1; padding: 10px; overflow-y: auto;"></div>
+            </div>
+        </div>
+
+        <div class="window minimized" id="contacts-window" style="z-index: 8; top: 160px; left: 160px; width: 350px; height: 350px;" data-sys-name="contacts">
+            <div class="window-header"><span class="title">Kontakty</span><div class="window-controls"><button class="window-btn max-btn">[+]</button><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content" style="display:flex; flex-direction:column; padding:0; background:#fff;">
+                <div class="app-toolbar">
+                    <input type="text" id="contact-name" class="app-toolbar-input" placeholder="Jméno">
+                    <input type="text" id="contact-phone" class="app-toolbar-input" placeholder="Telefon">
+                    <button id="contact-add-btn" class="app-toolbar-btn">Uložit</button>
+                </div>
+                <div id="contacts-list" style="flex-grow: 1; padding: 10px; overflow-y: auto; font-size:11px;"></div>
+            </div>
+        </div>
+
+        <div class="window minimized" id="dos-window" style="z-index: 9; top: 100px; left: 100px; width: 450px; height: 300px;" data-sys-name="dos">
+            <div class="window-header"><span class="title">MS-DOS Prompt</span><div class="window-controls"><button class="window-btn max-btn">[+]</button><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content" style="padding:0; display:flex; flex-direction:column; background:#000;" id="dos-container">
+                <div id="dos-output">Type 'help' for commands.<br><br></div>
+                <div class="dos-line"><span>C:\&gt;</span><input type="text" id="dos-input"></div>
+            </div>
+        </div>
+
+        <div class="window minimized" id="task-manager-window" style="z-index: 10; top: 200px; left: 200px; width: 300px; height: 350px;" data-sys-name="task">
+            <div class="window-header"><span class="title">Správce Úloh</span><div class="window-controls"><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content" style="display:flex; flex-direction:column; background:#fff; padding:0;">
+                <div style="padding:5px; border-bottom: 2px solid #000; background:#e0e0e0; font-weight:bold; font-size:10px;">Běžící procesy (Okna):</div>
+                <div id="task-list" style="flex-grow:1; padding:5px; overflow-y:auto; font-size:11px;"></div>
+                <div style="padding:5px; background:#e0e0e0; border-top:2px solid #000;"><button class="retro-btn" style="width:100%;" onclick="updateTaskManager()">Obnovit seznam</button></div>
+            </div>
+        </div>
+        
+        <div class="window minimized" id="media-player-window" style="z-index: 8; top: 250px; left: 150px; width: 320px;" data-sys-name="media">
+            <div class="window-header"><span class="title">Media Player</span><div class="window-controls"><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content" style="background:#e0e0e0; text-align:center;">
+                <div style="font-size: 10px; margin-bottom: 10px;">Otevřít lokální MP3/WAV:</div>
+                <input type="file" id="media-upload" accept="audio/*" style="font-size:10px; width:100%; border:1px solid #000; padding:2px; margin-bottom:10px;">
+                <audio id="media-audio" controls style="width:100%; height:30px;"></audio>
+            </div>
+        </div>
+
+        <div class="window minimized" id="notepad-window" style="z-index: 9; top: 130px; left: 130px; width: 450px; height: 350px;" data-sys-name="notepad">
+            <div class="window-header"><span id="notepad-title" class="title">Poznámkový Blok</span><div class="window-controls"><button class="window-btn max-btn">[+]</button><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content" style="display: flex; flex-direction: column; padding: 0; background-color: var(--window-bg);">
+                <input type="hidden" id="notepad-file-id">
+                <div class="app-toolbar">
+                    <button id="np-new-btn" class="app-toolbar-btn">Nový</button>
+                    <input type="text" id="np-filename" class="app-toolbar-input" placeholder="dokument.txt">
+                    <button id="np-save-btn" class="app-toolbar-btn">💾 Do OS</button>
+                    <button id="np-dl-btn" class="app-toolbar-btn">↓ Do PC</button>
+                </div>
+                <textarea id="notepad-textarea" style="flex-grow: 1; resize: none; border: none; font-family: var(--font-family); font-size: 12px; padding: 10px; outline: none; background: #fff; color: #000;"></textarea>
+            </div>
+        </div>
+
+        <div class="window minimized" id="csv-window" style="z-index: 9; top: 140px; left: 140px; width: 550px; height: 400px;" data-sys-name="tables">
+            <div class="window-header"><span id="csv-title" class="title">Tabulky</span><div class="window-controls"><button class="window-btn max-btn">[+]</button><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content" style="display: flex; flex-direction: column; padding: 0; background-color: var(--window-bg);">
+                <input type="hidden" id="csv-file-id">
+                <div class="app-toolbar">
+                    <button id="csv-new-btn" class="app-toolbar-btn">Nový</button>
+                    <button id="csv-add-row" class="app-toolbar-btn">+ Řádek</button>
+                    <button id="csv-add-col" class="app-toolbar-btn">+ Sloupec</button>
+                    <input type="text" id="csv-filename" class="app-toolbar-input" placeholder="data.csv">
+                    <button id="csv-save-btn" class="app-toolbar-btn">💾 Do OS</button>
+                    <button id="csv-dl-btn" class="app-toolbar-btn">↓ Do PC</button>
+                </div>
+                <div style="flex-grow: 1; overflow: auto; background: #fff; padding: 5px;"><table class="csv-table" id="csv-table-content"></table></div>
+            </div>
+        </div>
+
+        <div class="window minimized" id="browser-window" style="z-index: 9; top: 120px; left: 150px; width: 500px; height: 400px;" data-sys-name="browser">
+            <div class="window-header"><span class="title">Web Browser</span><div class="window-controls"><button class="window-btn max-btn">[+]</button><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content" style="display: flex; flex-direction: column; padding: 0; background-color: var(--window-bg);">
+                <div style="display: flex; padding: 5px; border-bottom: 2px solid var(--border-color);">
+                    <input type="text" id="browser-url" value="" style="flex-grow: 1; font-family: var(--font-family); font-size: 12px; padding: 2px 4px; border: 1px solid var(--border-color); outline: none;">
+                    <button id="browser-go" class="retro-btn" style="margin-left: 5px;">GO</button>
+                </div>
+                <iframe id="browser-frame" src="" style="flex-grow: 1; width: 100%; height: 100%; border: none; background: #fff;" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+            </div>
+        </div>
+
+        <div class="window minimized" id="pdf-viewer-window" style="z-index: 9; top: 110px; left: 110px; width: 500px; height: 450px;" data-sys-name="pdf">
+            <div class="window-header"><span id="pdf-title" class="title">PDF Prohlížeč</span><div class="window-controls"><button class="window-btn max-btn">[+]</button><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content" style="display: flex; flex-direction: column; padding: 0; background-color: var(--window-bg);">
+                <div style="padding: 5px; border-bottom: 2px solid var(--border-color); display: flex; align-items: center; gap: 5px;">
+                    <span style="font-size: 10px; background: #000; color: #fff; padding: 2px 4px;">Z PC:</span>
+                    <input type="file" id="local-pdf-upload" accept=".pdf" style="font-size: 10px;">
+                </div>
+                <iframe id="pdf-frame" style="flex-grow: 1; width: 100%; height: 100%; border: none; background: #fff;"></iframe>
+            </div>
+        </div>
+
+        <div class="window minimized" id="image-viewer-window" style="z-index: 9; top: 120px; left: 120px; width: 400px; height: 350px;" data-sys-name="img">
+            <div class="window-header"><span id="img-title" class="title">Prohlížeč Obrázků</span><div class="window-controls"><button class="window-btn max-btn">[+]</button><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content" style="display: flex; justify-content: center; align-items: center; padding: 0; background-color: var(--window-bg); overflow: hidden;">
+                <img id="viewer-img" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+            </div>
+        </div>
+
+        <div class="window minimized" id="charmap-window" style="z-index: 8; top: 130px; left: 200px; width: 320px; height: 350px;" data-sys-name="charmap">
+            <div class="window-header"><span class="title">Mapa Znaků</span><div class="window-controls"><button class="window-btn max-btn">[+]</button><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content" style="display: flex; flex-direction: column; gap: 10px; background-color: var(--window-bg);">
+                <select id="charmap-select" style="font-family: var(--font-family); font-size: 12px; border: 2px solid #000; padding: 2px;">
+                    <option value="emoji">Ikony a Emoji</option>
+                    <option value="retro">Retro tvary</option>
+                    <option value="ascii">Základní znaky</option>
+                    <option value="hiragana">Hiragana (Japonsko)</option>
+                    <option value="katakana">Katakana (Japonsko)</option>
+                </select>
+                <div id="charmap-grid" style="flex-grow: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(25px, 1fr)); gap: 2px; overflow-y: auto; background: #fff; border: 1px inset #000; padding: 2px; align-content: start;"></div>
+                <div style="display: flex; gap: 10px; align-items: center; border-top: 1px dashed #000; padding-top: 5px;">
+                    <div id="charmap-preview" style="width: 40px; height: 40px; border: 2px solid #000; background: #fff; display: flex; justify-content: center; align-items: center; font-size: 24px;"></div>
+                    <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 5px;">
+                        <input type="text" id="charmap-input" readonly style="font-family: var(--font-family); font-size: 12px; border: 1px solid #000; padding: 2px; text-align: center;">
+                        <button id="charmap-copy-btn" class="retro-btn" style="width: 100%; font-weight: bold;">[ Kopírovat ]</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="window minimized" id="os-settings-window" style="z-index: 8; top: 100px; left: 210px; width: 280px;" data-sys-name="set_os">
+            <div class="window-header"><span class="title">Nastavení OS</span><div class="window-controls"><button class="window-btn max-btn">[+]</button><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content">
+                <div class="logo-box" style="font-size: 14px; width: 100%; box-sizing: border-box;">Jazyk OS / Language</div>
+                <select id="os-lang-select" style="width:100%; font-family:inherit; font-size:12px; border:2px solid #000; padding:4px; margin-bottom:10px;">
+                    <option value="cz">Čeština (CZ)</option><option value="en">English (EN)</option>
+                    <option value="de">Deutsch (DE)</option><option value="es">Español (ES)</option>
+                    <option value="fr">Français (FR)</option><option value="jp">日本語 (JP)</option>
+                </select>
+
+                <button id="fullscreen-btn-large" class="retro-btn" style="width: 100%; font-weight: bold; margin-bottom: 5px; padding: 6px;" onclick="toggleFullscreen()">🖵 Celá obrazovka</button>
+
+                <div class="logo-box" id="ui-desktop-title" style="font-size: 14px; width: 100%; box-sizing: border-box; margin-top:10px;">Plocha a Okna</div>
+                <div style="display: flex; gap: 5px; margin-top:5px; margin-bottom:15px;">
+                    <button id="arrange-icons-btn" class="retro-btn" style="flex: 1; font-weight: bold; padding: 4px;" onclick="arrangeIcons()">Uspořádat ikony</button>
+                    <button id="cascade-windows-btn" class="retro-btn" style="flex: 1; font-weight: bold; padding: 4px;" onclick="cascadeWindows()">Srovnat okna</button>
+                </div>
+
+                <div class="logo-box" style="font-size: 14px; width: 100%; box-sizing: border-box;">Motivy pozadí</div>
+                <div style="display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap;">
+                    <button class="color-preset" data-color="#008080" style="background:#008080; width:30px; height:30px; border:2px solid #000; cursor:pointer;" title="Retro Teal"></button>
+                    <button class="color-preset" data-color="#f28baf" style="background:#f28baf; width:30px; height:30px; border:2px solid #000; cursor:pointer;" title="Původní Růžová"></button>
+                    <button class="color-preset" data-color="#c0c0c0" style="background:#c0c0c0; width:30px; height:30px; border:2px solid #000; cursor:pointer;" title="Classic OS"></button>
+                    <button class="color-preset" data-color="#1a1a1a" style="background:#1a1a1a; width:30px; height:30px; border:2px solid #888; cursor:pointer;" title="Terminál Černá"></button>
+                    <button class="color-preset" data-color="#2d5a2d" style="background:#2d5a2d; width:30px; height:30px; border:2px solid #000; cursor:pointer;" title="Matrix Zelená"></button>
+                </div>
+                <input type="color" id="bg-color-picker" value="#008080" style="width: 100%; height: 25px; cursor: pointer; border: 2px solid var(--border-color); margin-bottom: 10px;">
+            </div>
+        </div>
+
+        <div class="window minimized" id="web-settings-window" style="z-index: 8; top: 120px; left: 230px; width: 280px;" data-sys-name="set_web">
+            <div class="window-header"><span class="title">Nastavení Web</span><div class="window-controls"><button class="window-btn max-btn">[+]</button><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content">
+                <div class="logo-box" style="font-size: 14px; width: 100%; box-sizing: border-box;">Úvodní stránka prohlížeče</div>
+                <input type="text" id="web-home-input" style="width:100%; font-family:var(--font-family); box-sizing:border-box; border:2px solid #000; padding:4px; font-size:12px; outline:none; margin-bottom:10px;" placeholder="https://">
+                <button id="web-home-save-btn" class="retro-btn" style="width: 100%; font-weight: bold;">Uložit úvodní stránku</button>
+            </div>
+        </div>
+
+        <div class="window minimized" id="sys-settings-window" style="z-index: 8; top: 140px; left: 250px; width: 280px;" data-sys-name="set_sys">
+            <div class="window-header"><span class="title">Nastavení Systém</span><div class="window-controls"><button class="window-btn max-btn">[+]</button><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content">
+                <div class="logo-box" style="font-size: 14px; width: 100%; box-sizing: border-box;">Lokální Disk (Disables Sync pro velké soubory)</div>
+                <div style="font-size: 10px; margin: 5px 0;" id="storage-status">0 KB / ~5000 KB</div>
+                <div style="width: 100%; height: 10px; border: 1px solid var(--border-color); background: #fff; margin-bottom: 10px;"><div id="storage-bar" style="width: 0%; height: 100%; background: #000;"></div></div>
+                
+                <div class="logo-box" style="font-size: 14px; width: 100%; box-sizing: border-box;">Cloud (Záloha nastavení)</div>
+                <div style="font-size: 10px; margin-top: 5px; word-wrap: break-word;" id="account-status">Connecting...</div>
+                
+                <div class="logo-box" style="font-size: 14px; margin-top: 15px; width: 100%; box-sizing: border-box;">Offline Export / Import</div>
+                <div style="display: flex; gap: 5px; margin-top:5px;">
+                    <button id="export-os-btn" class="retro-btn" style="flex: 1; font-weight: bold;">[ ↓ Export ]</button>
+                    <button id="import-os-btn" class="retro-btn" style="flex: 1; font-weight: bold;">[ ↑ Import ]</button>
+                </div>
+                <input type="file" id="import-os-file" accept=".json" style="display: none;">
+                
+                <div class="logo-box" style="font-size: 14px; margin-top: 15px; width: 100%; box-sizing: border-box;">Aktualizace systému</div>
+                <button id="force-update-btn" class="retro-btn" style="width: 100%; font-weight: bold; margin-top: 5px;">↻ Vynutit aktualizaci</button>
+            </div>
+        </div>
+
+        <div class="window minimized" id="upload-window" style="z-index: 8; top: 170px; left: 170px; width: 280px;" data-sys-name="upload">
+            <div class="window-header"><span class="title">Nahrát do OS</span><div class="window-controls"><button class="window-btn max-btn">[+]</button><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content">
+                <input type="file" id="sys-file-upload" accept=".h5ap,.h5b,.html,.txt,.csv,.pdf,image/png,image/jpeg,image/gif,image/webp" multiple style="margin-bottom: 10px; font-size: 10px; width: 100%; border: 1px solid #000; padding: 2px;">
+                <button id="sys-upload-btn" class="retro-btn" style="width: 100%; font-weight: bold;">Nahrát soubory</button>
+            </div>
+        </div>
+
+        <div class="window minimized" id="add-web-window" style="z-index: 8; top: 160px; left: 160px; width: 280px;" data-sys-name="addweb">
+            <div class="window-header"><span class="title">Přidat Web</span><div class="window-controls"><button class="window-btn max-btn">[+]</button><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content">
+                <input type="text" id="add-web-name" style="width: 100%; font-family: var(--font-family); box-sizing: border-box; border: 2px solid #000; padding: 4px; font-size: 12px; outline: none; margin-bottom: 10px;" placeholder="Název webu">
+                <input type="text" id="add-web-url" style="width: 100%; font-family: var(--font-family); box-sizing: border-box; border: 2px solid #000; padding: 4px; font-size: 12px; outline: none; margin-bottom: 15px;" placeholder="https://">
+                <button id="add-web-btn" class="retro-btn" style="width: 100%; font-weight: bold;">Přidat do OS</button>
+            </div>
+        </div>
+
+        <div class="window minimized" id="app-props-window" style="z-index: 99; top: 150px; left: 150px; width: 260px;" data-sys-name="props">
+            <div class="window-header"><span class="title">Vlastnosti aplikace</span><div class="window-controls"><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content" style="background:#e0e0e0;">
+                <input type="hidden" id="prop-app-id">
+                <input type="hidden" id="prop-app-type">
+                <div style="font-size:10px; font-weight:bold; margin-bottom:2px;">Název:</div>
+                <input type="text" id="prop-app-name" style="width:100%; box-sizing:border-box; margin-bottom: 10px; font-family:var(--font-family); font-size:12px; border:1px solid var(--border-color); padding:4px;">
+                <div style="font-size:10px; font-weight:bold; margin-bottom:2px;">Ikona (Znak/Emoji):</div>
+                <input type="text" id="prop-app-icon" style="width:100%; box-sizing:border-box; margin-bottom: 15px; font-family:var(--font-family); font-size:12px; border:1px solid var(--border-color); padding:4px;" maxlength="4">
+                <div style="display: flex; gap: 5px;">
+                    <button id="prop-save-btn" class="retro-btn" style="flex:1; font-weight:bold;">Uložit</button>
+                    <button id="prop-del-btn" class="retro-btn" style="flex:1; background:red; border-color:darkred;">Smazat</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="window minimized" id="about-window" style="z-index: 1;" data-sys-name="about">
+            <div class="window-header"><span class="title">O systému</span><div class="window-controls"><button class="window-btn" onclick="toggleFullscreen()" title="Fullscreen">🖵</button><button class="window-btn close-btn">[x]</button></div></div>
+            <div class="window-content" style="background-color: var(--window-bg); display:flex; gap: 5px; align-items: center;">
+                <div style="font-size:24px;">❁</div><div style="font-size: 11px; line-height: 1.3;"><b>Retro OS</b><br>Version 0.16.1<br>©2026. All rights reserved.</div>
+            </div>
+        </div>
+
+        <div class="window minimized" id="sys-msg-window" style="z-index: 9999; top: 30vh; left: 50%; transform: translateX(-50%); width: 280px; max-width: 90vw;">
+            <div class="window-header"><span class="title">Systémová zpráva</span><div class="window-controls"><button class="window-btn close-btn" onclick="document.getElementById('sys-msg-window').classList.add('minimized')">[x]</button></div></div>
+            <div class="window-content" style="text-align: center; padding: 20px; background: #fff; border: 2px inset #555;">
+                <div id="sys-msg-text" style="margin-bottom: 20px; font-weight: bold; font-size: 14px;"></div>
+                <button class="retro-btn" onclick="document.getElementById('sys-msg-window').classList.add('minimized')" style="padding: 5px 30px; font-size: 14px;">OK</button>
+            </div>
+        </div>
+
+        <div class="window minimized" id="sys-confirm-window" style="z-index: 9999; top: 30vh; left: 50%; transform: translateX(-50%); width: 280px; max-width: 90vw;">
+            <div class="window-header"><span class="title">Potvrzení</span><div class="window-controls"><button class="window-btn close-btn" onclick="document.getElementById('sys-confirm-window').classList.add('minimized')">[x]</button></div></div>
+            <div class="window-content" style="text-align: center; padding: 20px; background: #fff; border: 2px inset #555;">
+                <div id="sys-confirm-text" style="margin-bottom: 20px; font-weight: bold; font-size: 14px;"></div>
+                <div style="display: flex; gap: 15px; justify-content: center;">
+                    <button class="retro-btn" id="sys-confirm-yes" style="padding: 5px 20px; font-size: 14px;">Ano</button>
+                    <button class="retro-btn" onclick="document.getElementById('sys-confirm-window').classList.add('minimized')" style="padding: 5px 20px; font-size: 14px;">Ne</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const i18n = {
+            'cz': { apps: 'Aplikace', settings: 'Nastavení', docs: 'Dokumenty', gal: 'Galerie', web: 'Weby', logout: 'Odhlásit', login: 'Přihlásit Googlem', noapp: 'Žádné', clock: 'Hodiny', calc: 'Kalkulačka', todo: 'Úkolníček', contacts: 'Kontakty', dos: 'MS-DOS Prompt', task: 'Správce Úloh', media: 'Media Player', notepad: 'Poznámkový Blok', tables: 'Tabulky', browser: 'Web Browser', pdf: 'PDF Prohlížeč', img: 'Obrázky', upload: 'Nahrát soubory', addweb: 'Přidat Web', charmap: 'Mapa Znaků', set_os: 'Nastavení OS', set_web: 'Nastavení Web', set_sys: 'Nastavení Systém', props: 'Vlastnosti aplikace', fullscreen: 'Celá obrazovka', about: 'O systému', h5apps: 'H5 Aplikace', library: 'Knihovna', arrange: 'Uspořádat ikony', cascade: 'Srovnat okna', desktop: 'Plocha a Okna', other: 'Ostatní' },
+            'en': { apps: 'Applications', settings: 'Settings', docs: 'Documents', gal: 'Gallery', web: 'Websites', logout: 'Logout', login: 'Google Sign In', noapp: 'None', clock: 'Clock', calc: 'Calculator', todo: 'To-Do List', contacts: 'Contacts', dos: 'MS-DOS Prompt', task: 'Task Manager', media: 'Media Player', notepad: 'Notepad', tables: 'Spreadsheets', browser: 'Web Browser', pdf: 'PDF Viewer', img: 'Image Viewer', upload: 'Upload Files', addweb: 'Add Website', charmap: 'Character Map', set_os: 'OS Settings', set_web: 'Web Settings', set_sys: 'System Settings', props: 'App Properties', fullscreen: 'Fullscreen', about: 'About OS', h5apps: 'H5 Apps', library: 'Library', arrange: 'Arrange Icons', cascade: 'Cascade Windows', desktop: 'Desktop & Windows', other: 'Others' },
+            'de': { apps: 'Anwendungen', settings: 'Einstellungen', docs: 'Dokumente', gal: 'Galerie', web: 'Webseiten', logout: 'Abmelden', login: 'Google Login', noapp: 'Keine', clock: 'Uhr', calc: 'Rechner', todo: 'Aufgaben', contacts: 'Kontakte', dos: 'MS-DOS Prompt', task: 'Task-Manager', media: 'Media Player', notepad: 'Editor', tables: 'Tabellen', browser: 'Webbrowser', pdf: 'PDF-Betrachter', img: 'Bildbetrachter', upload: 'Hochladen', addweb: 'Webseite hinzufügen', charmap: 'Zeichentabelle', set_os: 'OS-Einstellungen', set_web: 'Web-Einstellungen', set_sys: 'Systemeinstellungen', props: 'Eigenschaften', fullscreen: 'Vollbild', about: 'Über OS', h5apps: 'H5 Apps', library: 'Bibliothek', arrange: 'Symbole anordnen', cascade: 'Fenster überlappen', desktop: 'Desktop & Fenster', other: 'Andere' },
+            'es': { apps: 'Aplicaciones', settings: 'Ajustes', docs: 'Documentos', gal: 'Galería', web: 'Sitios Web', logout: 'Cerrar sesión', login: 'Acceso Google', noapp: 'Ninguno', clock: 'Reloj', calc: 'Calculadora', todo: 'Tareas', contacts: 'Contactos', dos: 'MS-DOS', task: 'Administrador', media: 'Media Player', notepad: 'Bloc de Notas', tables: 'Hojas de Cálculo', browser: 'Navegador Web', pdf: 'Visor PDF', img: 'Visor Imágenes', upload: 'Subir', addweb: 'Añadir Web', charmap: 'Mapa Caracteres', set_os: 'Ajustes de OS', set_web: 'Ajustes de Web', set_sys: 'Ajustes del Sistema', props: 'Propiedades', fullscreen: 'Pantalla completa', about: 'Acerca de', h5apps: 'Apps H5', library: 'Biblioteca', arrange: 'Organizar Iconos', cascade: 'Cascada Ventanas', desktop: 'Escritorio y Ventanas', other: 'Otros' },
+            'fr': { apps: 'Applications', settings: 'Paramètres', docs: 'Documents', gal: 'Galerie', web: 'Sites Web', logout: 'Déconnexion', login: 'Connexion Google', noapp: 'Aucun', clock: 'Horloge', calc: 'Calculatrice', todo: 'Tâches', contacts: 'Contacts', dos: 'Invite DOS', task: 'Gestionnaire', media: 'Lecteur Média', notepad: 'Bloc-notes', tables: 'Feuilles Calcul', browser: 'Navigateur Web', pdf: 'Lecteur PDF', img: 'Lecteur Images', upload: 'Téléverser', addweb: 'Ajouter Site Web', charmap: 'Table Caractères', set_os: 'Paramètres OS', set_web: 'Paramètres Web', set_sys: 'Paramètres Système', props: 'Propriétés', fullscreen: 'Plein écran', about: 'À propos', h5apps: 'Apps H5', library: 'Bibliothèque', arrange: 'Organiser Icônes', cascade: 'Cascade Fenêtres', desktop: 'Bureau & Fenêtres', other: 'Autres' },
+            'jp': { apps: 'アプリ', settings: '設定', docs: 'ドキュメント', gal: 'ギャラリー', web: 'ウェブサイト', logout: 'ログアウト', login: 'Google ログイン', noapp: 'なし', clock: '時計', calc: '電卓', todo: 'タスク', contacts: '連絡先', dos: 'コマンドプロンプト', task: 'タスクマネージャー', media: 'メディア', notepad: 'メモ帳', tables: 'スプレッドシート', browser: 'ブラウザ', pdf: 'PDFビューア', img: '画像ビューア', upload: 'アップロード', addweb: 'ウェブ追加', charmap: '文字コード表', set_os: 'OS設定', set_web: 'Web設定', set_sys: 'システム設定', props: 'プロパティ', fullscreen: '全画面表示', about: 'システム情報', h5apps: 'H5 アプリ', library: 'ライブラリ', arrange: 'アイコンを整列', cascade: 'ウィンドウを重ねる', desktop: 'デスクトップとウィンドウ', other: 'その他' }
+        };
+
+        let highestZIndex = 10;
+        const desktop = document.getElementById('desktop');
+        const appMenuBtn = document.getElementById('top-left-label');
+        const appMenu = document.getElementById('app-menu');
+        
+        let osState = {
+            lang: 'cz', bgColor: '#008080', worldTz: 'America/Santiago', icons: [], systemApps: {}, webApps: [], windowStates: {},
+            todoData: [], contactsData: [], browserHome: 'https://cs.wikipedia.org'
+        };
+        let db, auth, currentUser; const appId = 'H5RetroOS';
+
+        function t(key) { return i18n[osState.lang] ? (i18n[osState.lang][key] || key) : (i18n['cz'][key] || key); }
+
+        window.showSysMsg = (msg) => {
+            document.getElementById('sys-msg-text').textContent = msg;
+            const w = document.getElementById('sys-msg-window');
+            w.classList.remove('minimized');
+            highestZIndex++; w.style.zIndex = highestZIndex;
+            fixWindowPos(w);
+        };
+
+        window.showConfirm = (msg, callback) => {
+            document.getElementById('sys-confirm-text').textContent = msg;
+            const win = document.getElementById('sys-confirm-window');
+            win.classList.remove('minimized');
+            highestZIndex++; win.style.zIndex = highestZIndex;
+            fixWindowPos(win);
+            const yesBtn = document.getElementById('sys-confirm-yes');
+            yesBtn.onclick = () => { win.classList.add('minimized'); callback(); };
+        };
+        
+        function fixWindowPos(w) {
+            w.style.left = w.offsetLeft + 'px';
+            w.style.top = w.offsetTop + 'px';
+            w.style.bottom = 'auto'; 
+            w.style.right = 'auto';
+        }
+
+        function clampCoordinate(val, maxVal) {
+            return Math.max(0, Math.min(parseInt(val) || 0, maxVal));
+        }
+
+        async function initSystem() {
+            document.querySelectorAll('.max-btn').forEach(btn => btn.textContent = '[+]');
+            document.querySelectorAll('.close-btn').forEach(btn => btn.textContent = '[x]');
+            
+            const firebaseConfig = { apiKey: "AIzaSyADxsx8n5TWmg9RhNG8kKU9m3QzLP19fHw", authDomain: "h5retroos.firebaseapp.com", projectId: "h5retroos", storageBucket: "h5retroos.firebasestorage.app", messagingSenderId: "869637982111", appId: "1:869637982111:web:fd6c4f06084c49b7c05faa" };
+            try {
+                const app = initializeApp(firebaseConfig); db = getFirestore(app); auth = getAuth(app);
+                onAuthStateChanged(auth, async (user) => {
+                    const localSaved = localStorage.getItem('retroOsState');
+                    if(localSaved) { try { osState = JSON.parse(localSaved); } catch(e) {} }
+
+                    if (user) {
+                        currentUser = user; 
+                        document.getElementById('account-status').textContent = user.isAnonymous ? `Local: ${user.uid.substring(0,8)}` : `Cloud Sync: ${user.email}`; 
+                        await loadStateFromCloud(); 
+                    } else { 
+                        try { await signInAnonymously(auth); } catch(e) { applyState(); } 
+                    }
+                });
+            } catch (e) { 
+                const localSaved = localStorage.getItem('retroOsState');
+                if(localSaved) { try { osState = JSON.parse(localSaved); } catch(e) {} }
+                applyState(); 
+            }
+            
+            document.querySelectorAll('.window').forEach(win => setupAppWindow(win));
+            setInterval(updateClock, 1000); updateClock();
+
+            window.addEventListener('resize', () => {
+                clearTimeout(window.resizeTimer);
+                window.resizeTimer = setTimeout(() => {
+                    applyWindowStates();
+                    renderIcons();
+                }, 200);
+            });
+        }
+
+        async function loadStateFromCloud() {
+            try { 
+                const docSnap = await getDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'osState', 'default')); 
+                if (docSnap.exists()) { 
+                    const cloudState = docSnap.data();
+                    const localIcons = osState.icons || [];
+                    osState = { ...osState, ...cloudState, icons: localIcons };
+                } 
+            } catch(e) { }
+            applyState();
+        }
+
+        function applyState() {
+            if(!osState.lang) osState.lang = 'cz'; document.getElementById('os-lang-select').value = osState.lang;
+            if(!osState.worldTz) osState.worldTz = 'America/Santiago'; const tzSelect = document.getElementById('world-tz-select'); if(tzSelect) tzSelect.value = osState.worldTz;
+            document.documentElement.style.setProperty('--desktop-bg', osState.bgColor || '#008080'); document.getElementById('bg-color-picker').value = osState.bgColor || '#008080';
+            
+            if(!osState.browserHome) osState.browserHome = 'https://cs.wikipedia.org';
+            document.getElementById('web-home-input').value = osState.browserHome;
+            
+            if(!window.browserInitialized) {
+                document.getElementById('browser-url').value = osState.browserHome;
+                document.getElementById('browser-frame').src = osState.browserHome;
+                window.browserInitialized = true;
+            }
+            
+            if(!osState.systemApps) osState.systemApps = {}; if(!osState.webApps) osState.webApps = []; if(!osState.windowStates) osState.windowStates = {};
+            if(!osState.todoData) osState.todoData = []; if(!osState.contactsData) osState.contactsData = [];
+            if(!osState.icons) osState.icons = [];
+            
+            const sysWindows = Array.from(document.querySelectorAll('.window[data-sys-name]'));
+            sysWindows.forEach((w, i) => { if(!osState.systemApps[w.id]) osState.systemApps[w.id] = { onDesktop: false, x: 20 + (i*15), y: 20 + (i*15), iconText: 'SYS' }; });
+
+            applyLanguage(); renderIcons(); renderTodo(); renderContacts(); updateStorageUI(); applyWindowStates();
+        }
+
+        function applyLanguage() {
+            document.querySelectorAll('.window[data-sys-name]').forEach(w => {
+                const sysKey = w.getAttribute('data-sys-name');
+                const titleEl = w.querySelector('.window-header .title');
+                if(titleEl && sysKey && t(sysKey) !== sysKey) {
+                    titleEl.textContent = t(sysKey);
+                }
+            });
+            const fsBtn = document.getElementById('fullscreen-btn-large');
+            if(fsBtn) fsBtn.innerHTML = `🖵 ${t('fullscreen')}`;
+            
+            const arrBtn = document.getElementById('arrange-icons-btn');
+            if(arrBtn) arrBtn.textContent = t('arrange');
+            const casBtn = document.getElementById('cascade-windows-btn');
+            if(casBtn) casBtn.textContent = t('cascade');
+            const deskTtl = document.getElementById('ui-desktop-title');
+            if(deskTtl) deskTtl.textContent = t('desktop');
+
+            updateAppMenu();
+        }
+
+        function saveWindowStates() {
+            if (!osState) return; osState.windowStates = {};
+            document.querySelectorAll('.window').forEach(w => {
+                if(w.id === 'sys-msg-window' || w.id === 'sys-confirm-window') return;
+                osState.windowStates[w.id] = { left: w.style.left, top: w.style.top, width: w.style.width, height: w.style.height, minimized: w.classList.contains('minimized'), maximized: w.classList.contains('maximized'), zIndex: w.style.zIndex };
+            }); syncState();
+        }
+
+        function applyWindowStates() {
+            for (const [id, state] of Object.entries(osState.windowStates)) {
+                if(!state.minimized && id.startsWith('win-')) {
+                    const appId = id.replace('win-',''); const app = osState.icons.find(i=>i.id===appId);
+                    if(app && !document.getElementById(id)) openH5apWindow(app.name, app.code, appId, true);
+                }
+            }
+            for (const [id, state] of Object.entries(osState.windowStates)) {
+                const w = document.getElementById(id); if (w) {
+                    
+                    let sLeft = clampCoordinate(state.left, window.innerWidth - 100);
+                    let sTop = clampCoordinate(state.top, window.innerHeight - 50);
+
+                    if (state.left) { w.style.left = sLeft + 'px'; w.style.right = 'auto'; w.style.bottom = 'auto'; }
+                    if (state.top && state.top !== 'auto') { w.style.top = sTop + 'px'; w.style.bottom = 'auto'; }
+                    
+                    if (state.width) w.style.width = state.width; if (state.height) w.style.height = state.height; if (state.zIndex) w.style.zIndex = state.zIndex;
+                    if (state.minimized) w.classList.add('minimized'); else w.classList.remove('minimized');
+                }
+            }
+        }
+
+        async function syncState() {
+            try { localStorage.setItem('retroOsState', JSON.stringify(osState)); updateStorageUI(); } catch(e) {}
+            if (currentUser && db) { 
+                try { 
+                    const { icons, ...cloudState } = osState;
+                    const stateStr = JSON.stringify(cloudState); 
+                    if(stateStr.length < 900000) {
+                        await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'osState', 'default'), cloudState); 
+                    }
+                } catch(e) {} 
+            }
+        }
+
+        function updateStorageUI() {
+            let total = 0; try { for(let x in localStorage) { if (localStorage.hasOwnProperty(x)) total += (localStorage[x].length + x.length) * 2; } } catch(e){}
+            const bar = document.getElementById('storage-bar'), txt = document.getElementById('storage-status');
+            if(bar && txt) { txt.textContent = `${(total / 1024).toFixed(1)} KB / ~5000 KB`; bar.style.width = Math.min(100, (total / (5000*1024)) * 100) + '%'; }
+        }
+        
+        document.getElementById('os-lang-select').addEventListener('change', (e) => { osState.lang = e.target.value; syncState(); applyLanguage(); renderIcons(); });
+        document.getElementById('world-tz-select').addEventListener('change', (e) => { osState.worldTz = e.target.value; syncState(); updateClock(); });
+
+        function setupSubmenu(el) {
+            el.addEventListener('pointerdown', (e) => {
+                if(e.target.closest('.submenu')) return; 
+                e.stopPropagation();
+                const isOpen = el.classList.contains('open');
+                document.querySelectorAll('.has-submenu').forEach(n => n.classList.remove('open'));
+                if(!isOpen) el.classList.add('open');
+            });
+        }
+
+        function updateAppMenu() {
+            appMenu.innerHTML = '';
+            const sysWindows = Array.from(document.querySelectorAll('.window[data-sys-name]'));
+            const appsKeys = ['clock', 'calc', 'todo', 'contacts', 'dos', 'task', 'media', 'notepad', 'tables', 'browser', 'pdf', 'img', 'charmap'];
+            const setKeys = ['upload', 'addweb', 'set_os', 'set_web', 'set_sys', 'about'];
+            
+            const regularApps = sysWindows.filter(w => appsKeys.includes(w.getAttribute('data-sys-name')));
+            const settingApps = sysWindows.filter(w => setKeys.includes(w.getAttribute('data-sys-name')));
+
+            function createMenuRow(w, i, container) {
+                const sysKey = w.getAttribute('data-sys-name'); const appName = sysKey ? t(sysKey) : w.id;
+                const row = document.createElement('div'); row.className = 'menu-item menu-app-row';
+                const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = osState.systemApps[w.id].onDesktop;
+                cb.onclick = (e) => e.stopPropagation(); cb.onchange = (e) => { osState.systemApps[w.id].onDesktop = e.target.checked; syncState(); renderIcons(); };
+                const label = document.createElement('div'); label.className = 'menu-app-name'; label.textContent = appName;
+                label.onclick = (e) => { 
+                    e.stopPropagation(); w.classList.remove('minimized'); highestZIndex++; w.style.zIndex = highestZIndex; 
+                    fixWindowPos(w);
+                    appMenu.style.display = 'none'; 
+                    document.querySelectorAll('.has-submenu').forEach(n => n.classList.remove('open'));
+                    if(w.id === 'task-manager-window') updateTaskManager(); 
+                };
+                row.appendChild(cb); row.appendChild(label); container.appendChild(row);
+            }
+
+            const catSystem = document.createElement('div'); catSystem.className = 'menu-item has-submenu'; 
+            catSystem.innerHTML = `<div class="has-submenu-label"><span>${t('apps')}</span> <span>►</span></div>`;
+            const subSystem = document.createElement('div'); subSystem.className = 'submenu';
+            regularApps.forEach((w, i) => createMenuRow(w, i, subSystem)); catSystem.appendChild(subSystem); appMenu.appendChild(catSystem);
+            setupSubmenu(catSystem);
+            
+            const catSettings = document.createElement('div'); catSettings.className = 'menu-item has-submenu'; 
+            catSettings.innerHTML = `<div class="has-submenu-label"><span>${t('settings')}</span> <span>►</span></div>`;
+            const subSettings = document.createElement('div'); subSettings.className = 'submenu';
+            settingApps.forEach((w, i) => createMenuRow(w, i, subSettings)); 
+            
+            const fsRow = document.createElement('div'); fsRow.className = 'menu-item menu-app-row'; 
+            fsRow.innerHTML = `<div class="menu-app-name">🖵 ${t('fullscreen')}</div>`;
+            fsRow.onclick = (e) => { e.stopPropagation(); appMenu.style.display='none'; document.querySelectorAll('.has-submenu').forEach(n => n.classList.remove('open')); toggleFullscreen(); };
+            subSettings.appendChild(fsRow);
+
+            catSettings.appendChild(subSettings); appMenu.appendChild(catSettings);
+            setupSubmenu(catSettings);
+
+            const catDocs = document.createElement('div'); catDocs.className = 'menu-item has-submenu'; 
+            catDocs.innerHTML = `<div class="has-submenu-label"><span>${t('docs')}</span> <span>►</span></div>`;
+            const subDocs = document.createElement('div'); subDocs.className = 'submenu';
+            const docsApps = osState.icons.filter(app => app.name.toLowerCase().match(/\.(txt|pdf|csv|html)$/i));
+            docsApps.forEach(app => buildUserAppMenuRow(app, subDocs, (e) => { e.stopPropagation(); appMenu.style.display='none'; document.querySelectorAll('.has-submenu').forEach(n => n.classList.remove('open')); if(app.name.toLowerCase().endsWith('.pdf')) openPdfViewer(app.name, app.code); else if(app.name.toLowerCase().endsWith('.csv')) openCsvViewer(app.name, app.code, app.id); else if(app.name.toLowerCase().endsWith('.html')) openH5apWindow(app.name, app.code, app.id); else openNotepad(app.name, app.code, app.id); }));
+            if(docsApps.length===0) subDocs.innerHTML = `<div class="menu-item" style="color:#888;">${t('noapp')}</div>`;
+            catDocs.appendChild(subDocs); appMenu.appendChild(catDocs);
+            setupSubmenu(catDocs);
+
+            const catGal = document.createElement('div'); catGal.className = 'menu-item has-submenu'; 
+            catGal.innerHTML = `<div class="has-submenu-label"><span>${t('gal')}</span> <span>►</span></div>`;
+            const subGal = document.createElement('div'); subGal.className = 'submenu';
+            const imgApps = osState.icons.filter(app => app.name.match(/\.(png|jpe?g|gif|webp)$/i));
+            imgApps.forEach(app => buildUserAppMenuRow(app, subGal, (e) => { e.stopPropagation(); appMenu.style.display='none'; document.querySelectorAll('.has-submenu').forEach(n => n.classList.remove('open')); openImageViewer(app.name, app.code); }));
+            if(imgApps.length===0) subGal.innerHTML = `<div class="menu-item" style="color:#888;">${t('noapp')}</div>`;
+            catGal.appendChild(subGal); appMenu.appendChild(catGal);
+            setupSubmenu(catGal);
+            
+            const catH5 = document.createElement('div'); catH5.className = 'menu-item has-submenu'; 
+            catH5.innerHTML = `<div class="has-submenu-label"><span>${t('h5apps')}</span> <span>►</span></div>`;
+            const subH5 = document.createElement('div'); subH5.className = 'submenu';
+            const h5Apps = osState.icons.filter(app => app.name.toLowerCase().endsWith('.h5ap'));
+            h5Apps.forEach(app => buildUserAppMenuRow(app, subH5, (e) => { e.stopPropagation(); appMenu.style.display='none'; document.querySelectorAll('.has-submenu').forEach(n => n.classList.remove('open')); openH5apWindow(app.name, app.code, app.id); }));
+            if(h5Apps.length===0) subH5.innerHTML = `<div class="menu-item" style="color:#888;">${t('noapp')}</div>`;
+            catH5.appendChild(subH5); appMenu.appendChild(catH5);
+            setupSubmenu(catH5);
+
+            const catLib = document.createElement('div'); catLib.className = 'menu-item has-submenu'; 
+            catLib.innerHTML = `<div class="has-submenu-label"><span>${t('library')}</span> <span>►</span></div>`;
+            const subLib = document.createElement('div'); subLib.className = 'submenu';
+            const libApps = osState.icons.filter(app => app.name.toLowerCase().endsWith('.h5b'));
+            libApps.forEach(app => buildUserAppMenuRow(app, subLib, (e) => { e.stopPropagation(); appMenu.style.display='none'; document.querySelectorAll('.has-submenu').forEach(n => n.classList.remove('open')); openH5apWindow(app.name, app.code, app.id); }));
+            if(libApps.length===0) subLib.innerHTML = `<div class="menu-item" style="color:#888;">${t('noapp')}</div>`;
+            catLib.appendChild(subLib); appMenu.appendChild(catLib);
+            setupSubmenu(catLib);
+
+            const catWeb = document.createElement('div'); catWeb.className = 'menu-item has-submenu'; 
+            catWeb.innerHTML = `<div class="has-submenu-label"><span>${t('web')}</span> <span>►</span></div>`;
+            const subWeb = document.createElement('div'); subWeb.className = 'submenu';
+            if(osState.webApps) osState.webApps.forEach(web => buildUserAppMenuRow(web, subWeb, (e) => { e.stopPropagation(); appMenu.style.display='none'; document.querySelectorAll('.has-submenu').forEach(n => n.classList.remove('open')); openInBrowser(web.url); }, true));
+            if(!osState.webApps || osState.webApps.length===0) subWeb.innerHTML = `<div class="menu-item" style="color:#888;">${t('noapp')}</div>`;
+            catWeb.appendChild(subWeb); appMenu.appendChild(catWeb);
+            setupSubmenu(catWeb);
+
+            const catOther = document.createElement('div'); catOther.className = 'menu-item has-submenu'; 
+            catOther.innerHTML = `<div class="has-submenu-label"><span>${t('other')}</span> <span>►</span></div>`;
+            const subOther = document.createElement('div'); subOther.className = 'submenu';
+            const otherApps = osState.icons.filter(app => !app.name.toLowerCase().match(/\.(txt|pdf|csv|html|png|jpe?g|gif|webp|h5ap|h5b)$/i));
+            otherApps.forEach(app => buildUserAppMenuRow(app, subOther, (e) => { 
+                e.stopPropagation(); appMenu.style.display='none'; document.querySelectorAll('.has-submenu').forEach(n => n.classList.remove('open')); 
+                showSysMsg('Tento formát souboru není podporován pro přímé otevření.'); 
+            }));
+            if(otherApps.length===0) subOther.innerHTML = `<div class="menu-item" style="color:#888;">${t('noapp')}</div>`;
+            catOther.appendChild(subOther); appMenu.appendChild(catOther);
+            setupSubmenu(catOther);
+
+            const catAuth = document.createElement('div'); catAuth.className = 'menu-item'; catAuth.style = 'border-top:2px solid var(--border-color); margin-top:5px; padding-top:5px; display:flex; justify-content:space-between; align-items:center;';
+            if(currentUser && !currentUser.isAnonymous) {
+                const userEmail = currentUser.email.split('@')[0];
+                const safeEmail = userEmail.length > 10 ? userEmail.substring(0,8) + '...' : userEmail;
+                catAuth.innerHTML = `<span style="font-size:10px; color:#555; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:5px; flex-shrink:1;" title="${currentUser.email}">${safeEmail}</span><button class="retro-btn" style="font-size:9px; padding:2px 4px; flex-shrink:0;">${t('logout')}</button>`;
+                catAuth.querySelector('button').onclick = async (e) => { e.stopPropagation(); try{await signOut(auth); window.location.reload();}catch(e){} };
+            } else {
+                catAuth.innerHTML = `<span>${t('login')}</span>`; catAuth.onclick = async (e) => { e.stopPropagation(); appMenu.style.display='none'; document.querySelectorAll('.has-submenu').forEach(n => n.classList.remove('open')); try{await signInWithPopup(auth, new GoogleAuthProvider());}catch(err){ document.getElementById('account-status').innerHTML = `<span style="color:red">Chyba: ${err.code}</span>`; document.getElementById('sys-settings-window').classList.remove('minimized'); }};
+            }
+            appMenu.appendChild(catAuth);
+        }
+
+        function buildUserAppMenuRow(app, container, clickFn, isWeb = false) {
+            const row = document.createElement('div'); row.className = 'menu-item menu-app-row';
+            const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = app.onDesktop !== false;
+            cb.onclick = (e) => e.stopPropagation(); cb.onchange = (e) => { app.onDesktop = e.target.checked; syncState(); renderIcons(); };
+            const label = document.createElement('div'); label.className = 'menu-app-name'; label.textContent = app.name.replace(/\.(txt|pdf|csv|png|jpe?g|gif|webp|h5ap|h5b|html)$/i, '');
+            label.onclick = clickFn;
+            const gearBtn = document.createElement('div'); gearBtn.className = 'menu-app-gear'; gearBtn.innerHTML = '⚙️'; gearBtn.title = "Vlastnosti aplikace";
+            gearBtn.onclick = (e) => { 
+                e.stopPropagation(); 
+                appMenu.style.display = 'none';
+                document.querySelectorAll('.has-submenu').forEach(n => n.classList.remove('open'));
+                const pw = document.getElementById('app-props-window');
+                pw.classList.remove('minimized');
+                highestZIndex++; pw.style.zIndex = highestZIndex;
+                fixWindowPos(pw);
+                
+                document.getElementById('prop-app-id').value = app.id;
+                document.getElementById('prop-app-type').value = isWeb ? 'web' : 'local';
+                document.getElementById('prop-app-name').value = app.name;
+                document.getElementById('prop-app-icon').value = app.iconText;
+            };
+            row.appendChild(cb); row.appendChild(label); row.appendChild(gearBtn); container.appendChild(row);
+        }
+
+        appMenuBtn.addEventListener('click', (e) => { e.stopPropagation(); appMenu.style.display = appMenu.style.display === 'flex' ? 'none' : 'flex'; if(appMenu.style.display==='flex'){highestZIndex++; appMenu.style.zIndex=highestZIndex;} });
+        
+        document.addEventListener('pointerdown', (e) => { 
+            if(!e.target.closest('#app-menu') && e.target !== appMenuBtn) {
+                appMenu.style.display = 'none'; 
+                document.querySelectorAll('.has-submenu').forEach(n => n.classList.remove('open'));
+            }
+        });
+
+        window.setupAppWindow = function(win) {
+            if(win.dataset.interactive === 'true') return;
+            win.dataset.interactive = 'true';
+            
+            const header = win.querySelector('.window-header');
+            const closeBtn = win.querySelector('.close-btn');
+            const maxBtn = win.querySelector('.max-btn');
+            
+            if(!win.querySelector('.resize-handle') && win.id !== 'app-props-window' && win.id !== 'sys-msg-window' && win.id !== 'sys-confirm-window') { 
+                const handle = document.createElement('div'); 
+                handle.className = 'resize-handle'; 
+                win.appendChild(handle); 
+            }
+            
+            if(!win.querySelector('.iframe-blocker')) {
+                const blocker = document.createElement('div');
+                blocker.className = 'iframe-blocker';
+                win.querySelector('.window-content').appendChild(blocker);
+            }
+
+            const resizeHandle = win.querySelector('.resize-handle');
+            
+            win.addEventListener('pointerdown', () => { 
+                highestZIndex++; 
+                win.style.zIndex = highestZIndex; 
+            }, {passive: true});
+            
+            if(closeBtn) closeBtn.addEventListener('click', (e) => { e.stopPropagation(); win.classList.add('minimized'); saveWindowStates(); });
+            if(maxBtn) maxBtn.addEventListener('click', (e) => { e.stopPropagation(); win.classList.toggle('maximized'); saveWindowStates(); });
+            
+            if(header) {
+                let isDragging = false, startX, startY, initialLeft, initialTop;
+                header.addEventListener('pointerdown', (e) => { 
+                    if(win.classList.contains('maximized')||e.target.closest('.window-controls'))return; 
+                    
+                    fixWindowPos(win);
+                    win.classList.add('dragging');
+
+                    isDragging = true; startX = e.clientX; startY = e.clientY; 
+                    initialLeft = win.offsetLeft; initialTop = win.offsetTop; 
+                    
+                    header.setPointerCapture(e.pointerId); 
+                });
+                header.addEventListener('pointermove', (e) => { if(!isDragging)return; win.style.left = `${initialLeft + (e.clientX - startX)}px`; win.style.top = `${initialTop + (e.clientY - startY)}px`; });
+                const endDrag = (e) => { 
+                    if(isDragging){ 
+                        isDragging=false; header.releasePointerCapture(e.pointerId); saveWindowStates(); 
+                        win.classList.remove('dragging');
+                    } 
+                };
+                header.addEventListener('pointerup', endDrag); header.addEventListener('pointercancel', endDrag);
+            }
+            
+            if(resizeHandle) {
+                let isResizing = false, startW, startH, startRX, startRY;
+                resizeHandle.addEventListener('pointerdown', (e) => { 
+                    fixWindowPos(win);
+                    win.classList.add('resizing');
+                    
+                    isResizing=true; startRX=e.clientX; startRY=e.clientY; startW=win.offsetWidth; startH=win.offsetHeight; 
+                    resizeHandle.setPointerCapture(e.pointerId); e.stopPropagation(); e.preventDefault(); 
+                });
+                resizeHandle.addEventListener('pointermove', (e) => { if(!isResizing)return; win.style.width=`${Math.max(180, startW+(e.clientX-startRX))}px`; win.style.height=`${Math.max(100, startH+(e.clientY-startRY))}px`; });
+                const endResize = (e) => { 
+                    if(isResizing){ 
+                        isResizing=false; resizeHandle.releasePointerCapture(e.pointerId); saveWindowStates(); 
+                        win.classList.remove('resizing');
+                    } 
+                };
+                resizeHandle.addEventListener('pointerup', endResize); resizeHandle.addEventListener('pointercancel', endResize);
+            }
+        };
+
+        desktop.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); desktop.style.opacity = '0.7'; });
+        desktop.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); desktop.style.opacity = '1'; });
+        desktop.addEventListener('drop', (e) => { e.preventDefault(); e.stopPropagation(); desktop.style.opacity = '1'; if (e.dataTransfer && e.dataTransfer.files) { processFilesForOS(e.dataTransfer.files, e.clientX, e.clientY); } });
+
+        function renderIcons() {
+            document.querySelectorAll('.desktop-icon').forEach(i => i.remove());
+            if(osState.systemApps) for(const [id, state] of Object.entries(osState.systemApps)) { if(state.onDesktop) { const w = document.getElementById(id); if(w) createIconElement(id, t(w.getAttribute('data-sys-name'))||id, state.iconText, state.x, state.y, true); } }
+            osState.icons.forEach(app => { if(app.onDesktop !== false) createIconElement(app.id, app.name, app.iconText, app.x, app.y, false, app.code, false); });
+            if(osState.webApps) osState.webApps.forEach(web => { if(web.onDesktop !== false) createIconElement(web.id, web.name, web.iconText, web.x, web.y, false, web.url, true); });
+        }
+
+        function createIconElement(id, name, iconText, startX, startY, isSys, codeOrUrl=null, isWeb=false) {
+            let safeX = clampCoordinate(startX, window.innerWidth - 64);
+            let safeY = clampCoordinate(startY, window.innerHeight - 64);
+            if (safeY < 40) safeY = 40;
+
+            if (safeX !== startX || safeY !== startY) {
+                if(isSys && osState.systemApps[id]) { osState.systemApps[id].x = safeX; osState.systemApps[id].y = safeY; }
+                else if(isWeb) { const w=osState.webApps.find(i=>i.id===id); if(w){w.x = safeX; w.y = safeY;} }
+                else { const a=osState.icons.find(i=>i.id===id); if(a){a.x = safeX; a.y = safeY;} }
+            }
+
+            const icon = document.createElement('div'); icon.className = 'desktop-icon'; icon.style.left = `${safeX}px`; icon.style.top = `${safeY}px`;
+            icon.innerHTML = `<div class="icon-graphic">${iconText}</div><div class="icon-label">${name.replace(/\.(h5ap|h5b|html|txt|csv|pdf|png|jpe?g|gif|webp)$/i, '')}</div>`;
+            let isDragging = false, moved = false, pX, pY, initL, initT, lastTap = 0;
+            icon.addEventListener('pointerdown', (e) => { isDragging=true; moved=false; pX=e.clientX; pY=e.clientY; initL=parseInt(icon.style.left)||0; initT=parseInt(icon.style.top)||0; icon.setPointerCapture(e.pointerId); document.querySelectorAll('.desktop-icon').forEach(i=>i.style.zIndex=1); icon.style.zIndex=2; });
+            icon.addEventListener('pointermove', (e) => { if(!isDragging)return; const dx=e.clientX-pX, dy=e.clientY-pY; if(Math.abs(dx)>5||Math.abs(dy)>5){ moved=true; icon.style.left=`${initL+dx}px`; icon.style.top=`${initT+dy}px`; }});
+            icon.addEventListener('pointerup', (e) => {
+                if(!isDragging)return; isDragging=false; icon.releasePointerCapture(e.pointerId);
+                if(moved){ const nx=parseInt(icon.style.left), ny=parseInt(icon.style.top); if(isSys){osState.systemApps[id].x=nx; osState.systemApps[id].y=ny;}else if(isWeb){const w=osState.webApps.find(i=>i.id===id); if(w){w.x=nx; w.y=ny;}}else{const a=osState.icons.find(i=>i.id===id); if(a){a.x=nx; a.y=ny;}} syncState(); }
+                else {
+                    const now = Date.now(); if(now - lastTap < 300){
+                        if(isSys){ const w=document.getElementById(id); if(w){w.classList.remove('minimized'); highestZIndex++; w.style.zIndex=highestZIndex; fixWindowPos(w); if(id==='task-manager-window') updateTaskManager();} }
+                        else if(isWeb) openInBrowser(codeOrUrl);
+                        else { 
+                            const n = name.toLowerCase(); 
+                            if(n.endsWith('.txt')) openNotepad(name, codeOrUrl, id); 
+                            else if(n.endsWith('.csv')) openCsvViewer(name, codeOrUrl, id); 
+                            else if(n.endsWith('.pdf')) openPdfViewer(name, codeOrUrl); 
+                            else if(n.match(/\.(png|jpe?g|gif|webp)$/i)) openImageViewer(name, codeOrUrl); 
+                            else if(n.match(/\.(h5ap|h5b|html)$/i)) openH5apWindow(name, codeOrUrl, id);
+                            else showSysMsg('Tento formát souboru není podporován pro přímé otevření. Smazat jej můžete přes Vlastnosti (kliknutím pravým tlačítkem myši na ikonu nebo přes Menu).');
+                        }
+                    } lastTap = now;
+                }
+            });
+            
+            icon.addEventListener('contextmenu', (e) => {
+                e.preventDefault(); e.stopPropagation();
+                if(isSys) return;
+                const pw = document.getElementById('app-props-window');
+                pw.classList.remove('minimized');
+                highestZIndex++; pw.style.zIndex = highestZIndex;
+                fixWindowPos(pw);
+                
+                document.getElementById('prop-app-id').value = id;
+                document.getElementById('prop-app-type').value = isWeb ? 'web' : 'local';
+                document.getElementById('prop-app-name').value = name;
+                document.getElementById('prop-app-icon').value = iconText;
+            });
+            
+            desktop.appendChild(icon);
+        }
+
+        window.arrangeIcons = () => {
+            let col = 10, row = 50;
+            const spacingX = 70, spacingY = 80;
+            const maxH = window.innerHeight - spacingY;
+
+            const setPos = (item) => {
+                item.x = col; item.y = row;
+                row += spacingY;
+                if (row > maxH) { row = 50; col += spacingX; }
+            };
+
+            if(osState.systemApps) Object.values(osState.systemApps).forEach(s => { if(s.onDesktop) setPos(s); });
+            osState.icons.forEach(i => { if(i.onDesktop !== false) setPos(i); });
+            if(osState.webApps) osState.webApps.forEach(w => { if(w.onDesktop !== false) setPos(w); });
+
+            syncState(); renderIcons();
+        };
+
+        window.cascadeWindows = () => {
+            let startX = 30, startY = 50;
+            document.querySelectorAll('.window:not(.minimized)').forEach(w => {
+                if (w.id === 'sys-msg-window' || w.id === 'sys-confirm-window') return;
+                
+                fixWindowPos(w);
+                w.style.left = startX + 'px'; w.style.top = startY + 'px';
+                
+                startX += 30; startY += 30;
+                if(startX > window.innerWidth - 150) startX = 30;
+                if(startY > window.innerHeight - 150) startY = 50;
+                
+                if(!osState.windowStates[w.id]) osState.windowStates[w.id] = {};
+                osState.windowStates[w.id].left = w.style.left;
+                osState.windowStates[w.id].top = w.style.top;
+                
+                highestZIndex++; w.style.zIndex = highestZIndex;
+            });
+            saveWindowStates();
+        };
+
+        function openNotepad(name='novy.txt', content='', id=null) { const w = document.getElementById('notepad-window'); w.classList.remove('minimized'); highestZIndex++; w.style.zIndex=highestZIndex; fixWindowPos(w); document.getElementById('notepad-title').textContent = name; document.getElementById('np-filename').value = name; document.getElementById('notepad-file-id').value = id||''; document.getElementById('notepad-textarea').value = content; saveWindowStates(); }
+        document.getElementById('np-new-btn').onclick = () => openNotepad();
+        document.getElementById('np-save-btn').onclick = () => { let id=document.getElementById('notepad-file-id').value, name=document.getElementById('np-filename').value||'dokument.txt'; if(!name.toLowerCase().endsWith('.txt')) name+='.txt'; const c=document.getElementById('notepad-textarea').value; if(id){ const app=osState.icons.find(i=>i.id===id); if(app){app.name=name; app.code=c;} }else{ id='app_'+Date.now(); osState.icons.push({id, name, code:c, x:100, y:100, onDesktop:true, iconText:'TXT'}); document.getElementById('notepad-file-id').value=id; } syncState(); applyLanguage(); renderIcons(); };
+        document.getElementById('np-dl-btn').onclick = () => { const a=document.createElement('a'); a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(document.getElementById('notepad-textarea').value); a.download=document.getElementById('np-filename').value||'dokument.txt'; a.click(); };
+
+        let csvData = [];
+        function openCsvViewer(name='data.csv', content='', id=null) { const w = document.getElementById('csv-window'); w.classList.remove('minimized'); highestZIndex++; w.style.zIndex=highestZIndex; fixWindowPos(w); document.getElementById('csv-title').textContent = name; document.getElementById('csv-filename').value = name; document.getElementById('csv-file-id').value = id||''; csvData = content ? content.split('\n').map(r=>r.split(',')) : [['',''],['','']]; renderCsvTable(); saveWindowStates(); }
+        function renderCsvTable() { const t = document.getElementById('csv-table-content'); t.innerHTML=''; csvData.forEach((row,r) => { const tr=document.createElement('tr'); row.forEach((c, cI)=>{ const td=document.createElement('td'), inp=document.createElement('input'); inp.value=c; inp.oninput=(e)=>csvData[r][cI]=e.target.value; td.appendChild(inp); tr.appendChild(td); }); t.appendChild(tr); }); }
+        document.getElementById('csv-new-btn').onclick = () => openCsvViewer(); document.getElementById('csv-add-row').onclick = () => { csvData.push(new Array(csvData[0]?csvData[0].length:2).fill('')); renderCsvTable(); }; document.getElementById('csv-add-col').onclick = () => { csvData.forEach(r=>r.push('')); renderCsvTable(); };
+        document.getElementById('csv-save-btn').onclick = () => { let id=document.getElementById('csv-file-id').value, name=document.getElementById('csv-filename').value||'data.csv'; if(!name.toLowerCase().endsWith('.csv')) name+='.csv'; const c=csvData.map(r=>r.join(',')).join('\n'); if(id){ const app=osState.icons.find(i=>i.id===id); if(app){app.name=name; app.code=c;} }else{ id='app_'+Date.now(); osState.icons.push({id, name, code:c, x:120, y:120, onDesktop:true, iconText:'📊'}); document.getElementById('csv-file-id').value=id; } syncState(); applyLanguage(); renderIcons(); };
+
+        function openInBrowser(url) { const w=document.getElementById('browser-window'); w.classList.remove('minimized'); highestZIndex++; w.style.zIndex=highestZIndex; fixWindowPos(w); if(url) { document.getElementById('browser-url').value=url; document.getElementById('browser-frame').src=url; } saveWindowStates(); }
+        document.getElementById('browser-go').onclick = () => { let url=document.getElementById('browser-url').value; if(!url.startsWith('http')) url='https://'+url; document.getElementById('browser-frame').src=url; };
+        
+        function openPdfViewer(name, content) { const w=document.getElementById('pdf-viewer-window'); w.classList.remove('minimized'); highestZIndex++; w.style.zIndex=highestZIndex; fixWindowPos(w); document.getElementById('pdf-title').textContent = name; if(content) document.getElementById('pdf-frame').src=content; saveWindowStates(); }
+        document.getElementById('local-pdf-upload').onchange = (e) => { const f=e.target.files[0]; if(f){ document.getElementById('pdf-frame').src = URL.createObjectURL(f); document.getElementById('pdf-title').textContent = f.name; } };
+
+        function openImageViewer(name, dataUrl) { const w=document.getElementById('image-viewer-window'); w.classList.remove('minimized'); highestZIndex++; w.style.zIndex=highestZIndex; fixWindowPos(w); document.getElementById('img-title').textContent=name; document.getElementById('viewer-img').src=dataUrl; saveWindowStates(); }
+
+        function openH5apWindow(name, code, id, isRestoring = false) {
+            let w = document.getElementById(`win-${id}`);
+            if(w) { 
+                if(!isRestoring) {
+                    w.classList.remove('minimized'); highestZIndex++; w.style.zIndex=highestZIndex; 
+                    fixWindowPos(w);
+                }
+                return; 
+            }
+            
+            w = document.createElement('div'); w.className='window'; w.id=`win-${id}`; 
+            w.style.width='400px'; w.style.height='350px'; w.style.top='50px'; w.style.left='50px'; 
+            highestZIndex++; w.style.zIndex=highestZIndex;
+            
+            w.innerHTML=`
+                <div class="window-header"><span class="title">${name}</span><div class="window-controls"><button class="window-btn max-btn">[+]</button><button class="window-btn close-btn">[x]</button></div></div>
+                <div class="window-content" style="padding:0; overflow:hidden;">
+                    <div class="iframe-blocker"></div>
+                    <iframe style="width:100%; height:100%; border:none; background:#fff;" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"></iframe>
+                </div>`;
+            
+            const blob = new Blob([code], { type: 'text/html;charset=utf-8' });
+            const blobUrl = URL.createObjectURL(blob);
+            w.querySelector('iframe').src = blobUrl;
+
+            desktop.appendChild(w); 
+            setupAppWindow(w);
+            if(!isRestoring) saveWindowStates();
+        }
+
+        function processFilesForOS(files, xOffset, yOffset) {
+            Array.from(files).forEach((f,i) => {
+                const r = new FileReader(); r.onload = (e) => {
+                    let icon='<>'; if(f.name.endsWith('.html'))icon='📄'; if(f.name.endsWith('.txt'))icon='TXT'; if(f.name.endsWith('.csv'))icon='📊'; if(f.name.endsWith('.pdf'))icon='PDF'; if(f.name.endsWith('.h5ap'))icon='📦'; if(f.name.endsWith('.h5b'))icon='📚'; if(f.type.startsWith('image/'))icon='🖼️';
+                    osState.icons.push({id:'app_'+Date.now()+i, name:f.name, code:e.target.result, x: (xOffset || 100) + (i*20), y: (yOffset || 100) + (i*20), onDesktop:true, iconText:icon});
+                    if(i===files.length-1) { syncState(); applyLanguage(); renderIcons(); document.getElementById('upload-window').classList.add('minimized'); }
+                };
+                if(f.name.match(/\.(txt|csv|html|h5ap|h5b)$/i)) r.readAsText(f); else r.readAsDataURL(f);
+            });
+        }
+
+        document.getElementById('sys-upload-btn').onclick = () => { const files = document.getElementById('sys-file-upload').files; processFilesForOS(files, 100, 100); };
+        
+        document.getElementById('add-web-btn').onclick = () => {
+            let n = document.getElementById('add-web-name').value.trim()||'Nová Stránka', u = document.getElementById('add-web-url').value.trim(); if(!u)return;
+            if(!u.startsWith('http')) u='https://'+u; osState.webApps.push({id:'web_'+Date.now(), name:n, url:u, x:150, y:150, onDesktop:true, iconText:'WWW'});
+            syncState(); applyLanguage(); renderIcons(); document.getElementById('add-web-window').classList.add('minimized');
+        };
+        
+        document.getElementById('web-home-save-btn').onclick = () => {
+            let u = document.getElementById('web-home-input').value.trim();
+            if(!u) return;
+            if(!u.startsWith('http')) u = 'https://' + u;
+            osState.browserHome = u;
+            syncState();
+            document.getElementById('browser-url').value = u;
+            document.getElementById('browser-frame').src = u;
+            showSysMsg('Úvodní stránka prohlížeče byla uložena.');
+        };
+
+        document.getElementById('prop-save-btn').onclick = () => {
+            const id = document.getElementById('prop-app-id').value, type = document.getElementById('prop-app-type').value;
+            const targetList = type === 'web' ? osState.webApps : osState.icons;
+            const app = targetList.find(a => a.id === id);
+            if(app) { app.name = document.getElementById('prop-app-name').value || app.name; app.iconText = document.getElementById('prop-app-icon').value || app.iconText; syncState(); applyLanguage(); renderIcons(); }
+            document.getElementById('app-props-window').classList.add('minimized');
+        };
+        document.getElementById('prop-del-btn').onclick = () => {
+            showConfirm('Opravdu chcete tuto položku trvale smazat z OS?', () => {
+                const id = document.getElementById('prop-app-id').value, type = document.getElementById('prop-app-type').value;
+                if(type === 'web') osState.webApps = osState.webApps.filter(w => w.id !== id); else osState.icons = osState.icons.filter(i => i.id !== id);
+                syncState(); applyLanguage(); renderIcons(); document.getElementById('app-props-window').classList.add('minimized');
+            });
+        };
+
+        document.getElementById('export-os-btn').onclick = (e) => { const a=document.createElement('a'); a.href="data:text/json;charset=utf-8,"+encodeURIComponent(JSON.stringify(osState)); a.download="RetroOS_Backup.json"; document.body.appendChild(a); a.click(); a.remove(); const o=e.target.textContent; e.target.textContent="[ ✓ ]"; setTimeout(()=>e.target.textContent=o,2000); };
+        document.getElementById('import-os-btn').onclick = () => document.getElementById('import-os-file').click();
+        document.getElementById('import-os-file').onchange = (e) => { const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=(ev)=>{try{osState=JSON.parse(ev.target.result); syncState(); applyState();}catch(err){}}; r.readAsText(f); e.target.value=''; };
+
+        document.getElementById('force-update-btn').onclick = async (e) => {
+            e.target.textContent = "Probíhá...";
+            if ('serviceWorker' in navigator) {
+                try {
+                    const regs = await navigator.serviceWorker.getRegistrations();
+                    for (let r of regs) await r.unregister();
+                    if ('caches' in window) {
+                        const keys = await caches.keys();
+                        for (let k of keys) await caches.delete(k);
+                    }
+                } catch(err) {}
+            }
+            window.location.href = window.location.pathname + '?v=' + Date.now();
+        };
+
+        document.querySelectorAll('.color-preset').forEach(b => b.onclick = (e) => { osState.bgColor = e.target.getAttribute('data-color'); applyState(); syncState(); });
+        document.getElementById('bg-color-picker').oninput = (e) => { osState.bgColor = e.target.value; applyState(); syncState(); };
+        
+        const chars={
+            'emoji':['💻','📁','📄','📊','🎮','⚙️','🌐','🗑️','💾','🖼️','🎵','📧','🔒','✅','❌','⚠️','🔥','⭐','🚀','🤖'], 
+            'retro':['★','☆','♠','♣','♥','♦','◄','►','▲','▼','■','□','●','○','✓','✗','©','®','←','↑','→','↓'], 
+            'ascii':Array.from({length:94},(_,i)=>String.fromCharCode(i+33)),
+            'hiragana': Array.from({length:86},(_,i)=>String.fromCharCode(i+12353)),
+            'katakana': Array.from({length:90},(_,i)=>String.fromCharCode(i+12449))
+        };
+        document.getElementById('charmap-select').onchange = renderCharMap; function renderCharMap() { const g=document.getElementById('charmap-grid'); g.innerHTML=''; chars[document.getElementById('charmap-select').value].forEach(c=>{ const d=document.createElement('div'); d.textContent=c; d.style.cssText='text-align:center; cursor:pointer; border:1px solid #ccc; padding:4px;'; d.onclick=()=>{document.getElementById('charmap-preview').textContent=c; document.getElementById('charmap-input').value=c;}; g.appendChild(d); }); } renderCharMap();
+        document.getElementById('charmap-copy-btn').onclick = () => { if(navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(document.getElementById('charmap-input').value).catch(()=>{}); } else { const input = document.getElementById('charmap-input'); input.select(); document.execCommand('copy'); } };
+
+        window.toggleFullscreen = () => {
+            if (!document.fullscreenElement) { document.documentElement.requestFullscreen().catch(()=>{}); }
+            else { if (document.exitFullscreen) document.exitFullscreen(); }
+        };
+
+        window.switchClockTab = (tab) => { document.querySelectorAll('#clock-tool .tab-btn').forEach(b=>b.classList.remove('active')); document.querySelectorAll('#clock-tool .tab-content').forEach(c=>c.classList.remove('active')); event.target.classList.add('active'); document.getElementById('tab-'+tab).classList.add('active'); };
+        let alarmEnabled = false, alarmTime = '';
+        document.getElementById('alarm-toggle').onclick = () => { alarmEnabled = !alarmEnabled; alarmTime = document.getElementById('alarm-input').value; document.getElementById('alarm-status').textContent = alarmEnabled ? "Aktivní: " + alarmTime : "Vypnuto"; document.getElementById('alarm-status').style.color = alarmEnabled ? "green" : "red"; };
+        let swTime = 0, swInterval = null;
+        document.getElementById('sw-start').onclick = () => { if(!swInterval) swInterval = setInterval(()=> { swTime+=10; const ms=Math.floor((swTime%1000)/10), s=Math.floor((swTime/1000)%60), m=Math.floor(swTime/60000); document.getElementById('sw-display').textContent = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}.${ms.toString().padStart(2,'0')}`; }, 10); };
+        document.getElementById('sw-stop').onclick = () => { clearInterval(swInterval); swInterval=null; }; document.getElementById('sw-reset').onclick = () => { clearInterval(swInterval); swInterval=null; swTime=0; document.getElementById('sw-display').textContent="00:00.00"; };
+        
+        function updateClock() {
+            const d = new Date(), opts = { hour:'2-digit', minute:'2-digit', second:'2-digit' };
+            document.getElementById('clock-display').textContent = d.toLocaleTimeString('cs-CZ', opts);
+            
+            const dateStr = d.toLocaleDateString('cs-CZ', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+            document.getElementById('clock-date').textContent = dateStr;
+            
+            try { const tz = document.getElementById('world-tz-select').value || 'America/Santiago'; document.getElementById('clock-world').textContent = d.toLocaleTimeString('cs-CZ', {timeZone: tz, ...opts}); } catch(e) { }
+            if(alarmEnabled && alarmTime) { const ct = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`; if(ct === alarmTime && d.getSeconds()===0) { showSysMsg('⏰ BUDÍK ZVONÍ!'); alarmEnabled=false; document.getElementById('alarm-status').textContent="Vypnuto"; document.getElementById('alarm-status').style.color="red"; } }
+        }
+
+        window.calcInput = (v) => { const d = document.getElementById('calc-display'); if(v==='C') d.value=''; else if(v==='=') { try { d.value = eval(d.value.replace(/[^0-9+\-*/.]/g, '')); } catch(e){d.value='Error';} } else d.value+=v; };
+        
+        document.getElementById('todo-add-btn').onclick = () => { const i = document.getElementById('todo-input'); if(i.value.trim()){ osState.todoData.push({id:Date.now(), t:i.value.trim(), d:false}); i.value=''; renderTodo(); syncState(); } };
+        function renderTodo() { const l = document.getElementById('todo-list'); l.innerHTML=''; osState.todoData.forEach(td => { const d=document.createElement('div'); d.style.cssText="display:flex; gap:5px; margin-bottom:5px; align-items:center; border-bottom:1px solid #ccc; padding-bottom:5px;"; d.innerHTML=`<input type="checkbox" ${td.d?'checked':''}><span style="flex-grow:1; ${td.d?'text-decoration:line-through; color:#888':''}">${td.t}</span><button style="background:none; border:none; color:red; cursor:pointer;">✖</button>`; d.querySelector('input').onchange=(e)=>{td.d=e.target.checked; renderTodo(); syncState();}; d.querySelector('button').onclick=()=>{osState.todoData=osState.todoData.filter(i=>i.id!==td.id); renderTodo(); syncState();}; l.appendChild(d); }); }
+
+        document.getElementById('contact-add-btn').onclick = () => { const n = document.getElementById('contact-name'), p = document.getElementById('contact-phone'); if(n.value.trim()){ osState.contactsData.push({id:Date.now(), n:n.value.trim(), p:p.value.trim()}); n.value=''; p.value=''; renderContacts(); syncState(); } };
+        function renderContacts() { const l = document.getElementById('contacts-list'); l.innerHTML=''; osState.contactsData.forEach(c => { const d=document.createElement('div'); d.style.cssText="border:1px solid #000; padding:5px; margin-bottom:5px; display:flex; justify-content:space-between; align-items:center; background:#e0e0e0;"; d.innerHTML=`<div><b>${c.n}</b><br>${c.p}</div><button style="background:#000; color:#fff; border:1px solid #fff; cursor:pointer;">✖</button>`; d.querySelector('button').onclick=()=>{osState.contactsData=osState.contactsData.filter(i=>i.id!==c.id); renderContacts(); syncState();}; l.appendChild(d); }); }
+
+        document.getElementById('dos-input').onkeydown = (e) => { if(e.key==='Enter') { const out=document.getElementById('dos-output'), cmd=e.target.value.trim().toLowerCase(); out.innerHTML+=`<br>C:\\&gt;${cmd}`; e.target.value=''; 
+            if(cmd==='help') out.innerHTML+='<br>Commands: help, clear, time, color [hex], echo [txt], open calc, open dos';
+            else if(cmd==='clear') out.innerHTML='';
+            else if(cmd==='time') out.innerHTML+='<br>Current time is: ' + new Date().toLocaleTimeString();
+            else if(cmd.startsWith('color ')) { document.getElementById('dos-container').style.color = cmd.split(' ')[1]||'#0f0'; out.style.color = cmd.split(' ')[1]||'#0f0'; document.getElementById('dos-input').style.color = cmd.split(' ')[1]||'#0f0'; out.innerHTML+='<br>Color updated.'; }
+            else if(cmd.startsWith('echo ')) out.innerHTML+='<br>'+cmd.substring(5);
+            else if(cmd.startsWith('open ')) { const appName = cmd.split(' ')[1]; const w = document.querySelector(`.window[data-sys-name="${appName}"]`); if(w){ w.classList.remove('minimized'); highestZIndex++; w.style.zIndex=highestZIndex; fixWindowPos(w); out.innerHTML+=`<br>Opened ${appName}`; } else out.innerHTML+=`<br>App not found.`; }
+            else if(cmd!=='') out.innerHTML+='<br>Bad command or file name';
+            out.scrollTop = out.scrollHeight;
+        }};
+
+        window.updateTaskManager = () => { const l=document.getElementById('task-list'); l.innerHTML=''; document.querySelectorAll('.window:not(.minimized)').forEach(w => { if(w.id==='task-manager-window' || w.id==='sys-msg-window' || w.id==='sys-confirm-window') return; const d=document.createElement('div'); d.style.cssText="display:flex; justify-content:space-between; border-bottom:1px solid #ccc; padding:2px 0;"; d.innerHTML=`<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:150px;">${w.querySelector('.title').textContent}</span><div><button style="font-size:9px; cursor:pointer;" class="btn-front">Na vrch</button> <button style="font-size:9px; cursor:pointer;" class="btn-close">Zavřít</button></div>`; d.querySelector('.btn-front').onclick=()=>{highestZIndex++; w.style.zIndex=highestZIndex; fixWindowPos(w);}; d.querySelector('.btn-close').onclick=()=>{w.classList.add('minimized'); updateTaskManager(); saveWindowStates();}; l.appendChild(d); }); };
+        
+        document.getElementById('media-upload').onchange = (e) => { const f=e.target.files[0]; if(f) { document.getElementById('media-audio').src = URL.createObjectURL(f); document.getElementById('media-audio').play(); }};
+
+        window.addEventListener('message', (e) => { if (e.data && e.data.type === 'INSTALL_H5AP') { const a = e.data.payload; if (osState.icons.some(i=>i.name===a.name)) return; osState.icons.push({ id:'app_'+Date.now(), name:a.name, code:a.code, x:100, y:100, onDesktop:true, iconText:a.iconText||'📦' }); syncState(); applyLanguage(); renderIcons(); } });
+        
+        // Registrace Service Workeru pro PWA (offline podpora a instalace)
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./service-worker.js')
+            .then((reg) => console.log('H5RetroOS: PWA Service Worker zaregistrován.', reg.scope))
+            .catch((err) => console.error('H5RetroOS: Chyba registrace Service Workeru.', err));
+        }
+
+        window.addEventListener('load', initSystem);
+    </script>
+</body>
+</html>
